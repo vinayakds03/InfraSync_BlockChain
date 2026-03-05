@@ -1,0 +1,5 @@
+State: ['Karnataka', 'Tamil Nadu', 'Uttar Pradesh', 'Gujarat', 'Rajasthan', 'Kerala', 'Punjab', 'Haryana', 'Madhya Pradesh', 'Maharashtra']
+Road_Type: ['State Highway', 'Village Road', 'Urban Road', 'National Highway']
+Terrain_Type: ['Hilly', 'Coastal', 'Desert', 'Plain']
+Soil_Type: ['Sandy', 'Rocky', 'Black Cotton', 'Clay']
+Pavement_Type: ['Concrete', 'Bituminous']
