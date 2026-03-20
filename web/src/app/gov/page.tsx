@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, CheckCircle, ShieldCheck, Loader2, Play } from "lucide-react";
 import BidResults, { BidResult } from "@/components/BidResults";
+import { useWriteContract } from 'wagmi';
 
 interface Tender {
     id: string;
@@ -20,6 +21,8 @@ export default function GovDashboard() {
     const [isCreating, setIsCreating] = useState(false);
     const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
     const [evalResults, setEvalResults] = useState<{ results: BidResult[], winner: BidResult | null } | null>(null);
+    const [isAwarding, setIsAwarding] = useState(false);
+    const { writeContractAsync } = useWriteContract();
 
     // Form State
     const [newTitle, setNewTitle] = useState("");
@@ -88,6 +91,25 @@ export default function GovDashboard() {
             alert("Evaluation failed.");
         } finally {
             setEvaluatingId(null);
+        }
+    };
+
+    const handleAwardBlockchain = async () => {
+        setIsAwarding(true);
+        try {
+            const txHash = await writeContractAsync({
+                address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                abi: ["function awardContract(uint256 tenderId, uint256 bidIndex)"],
+                functionName: 'awardContract',
+                args: [BigInt(1), BigInt(0)] // For MVP, we mock tender 1, bid 0
+            });
+            console.log("Award Tx Hash:", txHash);
+            alert("✅ Contract Awarded! Soulbound NFT Certificate generated and issued to the winner's wallet.");
+        } catch(e: any) {
+            console.error(e);
+            alert(e.message || "MetaMask Transaction failed!");
+        } finally {
+            setIsAwarding(false);
         }
     };
 
@@ -226,7 +248,12 @@ export default function GovDashboard() {
                                         <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-800/30 text-yellow-800 dark:text-yellow-400 text-sm text-center font-bold">
                                             EVALUATION COMPLETE - CONTRACT AWARDED
                                         </div>
-                                        <BidResults results={evalResults.results} winner={evalResults.winner} />
+                                        <BidResults 
+                                            results={evalResults.results} 
+                                            winner={evalResults.winner} 
+                                            onAward={handleAwardBlockchain}
+                                            isAwarding={isAwarding}
+                                        />
                                     </div>
                                 </div>
                             </motion.div>

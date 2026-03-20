@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HardHat, Loader2, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
 import BidForm from "@/components/BidForm";
+import { useWriteContract } from 'wagmi';
+import { stringToHex, pad } from 'viem';
 
 interface Tender {
     id: string;
@@ -15,6 +17,7 @@ interface Tender {
 }
 
 export default function ContractorDashboard() {
+    const { writeContractAsync } = useWriteContract();
     const [tenders, setTenders] = useState<Tender[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -41,11 +44,9 @@ export default function ContractorDashboard() {
 
     const handleBidSubmit = async (formData: Record<string, any>) => {
         if (!selectedTender) return;
-
         setSubmitting(true);
         setSuccessMsg(null);
 
-        // Hardcode constrained tender fields
         const finalData = {
             ...formData,
             State: selectedTender.state,
@@ -53,27 +54,53 @@ export default function ContractorDashboard() {
         };
 
         try {
-            const response = await fetch(`http://localhost:8000/api/tenders/${selectedTender.id}/bids`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(finalData),
+            // Ensure state code is exactly 32 bytes for the smart contract
+            const stateCodeBytes32 = pad(stringToHex(finalData.State.substring(0, 2).toUpperCase() || "MH"), { size: 32 });
+            
+            // Web3 Smart Contract Submission
+            const txHash = await writeContractAsync({
+                address: "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Hardhat Local Default
+                abi: [
+                    "function submitBid(uint256 tenderId, uint256 bidAmount, bytes32 stateCode, uint8 roadType, uint8 terrainType, uint8 soilType, uint256 roadLengthMeters, uint8 lanes, uint256 numWorkers, uint256 durationDays, uint256 subgradeCBRValueX100, uint256 pavementThicknessMm, uint256 earthworkVolumeM3, uint8 bridgeCount, uint8 culvertCount)"
+                ],
+                functionName: 'submitBid',
+                args: [
+                    BigInt(selectedTender.id || 1), // tenderId
+                    BigInt(finalData.Bid_Amount || 0), // bidAmount
+                    stateCodeBytes32, // bytes32 stateCode
+                    0, // RoadType.Highway
+                    0, // TerrainType.Flat
+                    0, // SoilType.Clay
+                    BigInt(Math.floor(finalData.Road_Length_km * 1000)), // scale km to meters
+                    Number(finalData.Lanes || 2),
+                    BigInt(finalData.Num_Workers || 0),
+                    BigInt(finalData.Duration_days || 0),
+                    BigInt(Math.floor((finalData.Subgrade_CBR_Value || 0) * 100)), // scale CBR * 100
+                    BigInt(finalData.Pavement_Thickness_mm || 0),
+                    BigInt(finalData.Earthwork_Volume_m3 || 0),
+                    Number(finalData.Bridge_Count || 0),
+                    Number(finalData.Culvert_Count || 0)
+                ]
             });
 
-            const data = await response.json();
+            console.log("Blockchain Txn Hash:", txHash);
 
-            if (!response.ok) {
-                alert(data.detail || "Failed to submit bid");
-            } else {
-                setSuccessMsg("Your bid has been successfully submitted! Waiting for government evaluation.");
-                setTimeout(() => {
-                    setSelectedTender(null);
-                    setSuccessMsg(null);
-                    fetchTenders();
-                }, 3000);
-            }
+            // Optional: Backup the bid to backend Webhook / DB
+            await fetch(`http://localhost:8000/api/tenders/${selectedTender.id}/bids`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({...finalData, txHash}),
+            }).catch(() => console.log("Backend offline, but blockchain submission succeeded!"));
+
+            setSuccessMsg("Smart Contract Executed! Your bid is now securely recorded on the blockchain.");
+            setTimeout(() => {
+                setSelectedTender(null);
+                setSuccessMsg(null);
+                fetchTenders();
+            }, 3000);
         } catch (err: any) {
-            console.error(err);
-            alert("Error submitting bid.");
+            console.error("Blockchain error:", err);
+            alert(err.message || "Smart contract transaction failed. Check MetaMask.");
         } finally {
             setSubmitting(false);
         }

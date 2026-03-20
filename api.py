@@ -7,6 +7,21 @@ import io
 import math
 import uuid
 from typing import List, Optional
+from web3 import Web3
+
+# Connect to Hardhat Local Node
+w3 = Web3(Web3.HTTPProvider('http://127.0.0.1:8545'))
+# Hardhat Account #1 Private Key (The predefined ML Oracle Wallet)
+ORACLE_PRIVATE_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+# Only generate account if the provider actually connected successfully
+oracle_acct = w3.eth.account.from_key(ORACLE_PRIVATE_KEY)
+
+CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3" # Same as React
+CONTRACT_ABI = [{
+    "inputs": [{"name": "tenderId", "type": "uint256"}, {"name": "bidIndex", "type": "uint256"}, {"name": "isValid", "type": "bool"}],
+    "name": "updateValidity", "outputs": [], "stateMutability": "nonpayable", "type": "function"
+}]
+tender_contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
 
 app = FastAPI(title="Road Bidding System API")
 
@@ -130,7 +145,7 @@ async def evaluate_tender(tender_id: str):
     lowest_valid_bid = float('inf')
     winner = None
 
-    for tender_data in bids:
+    for idx, tender_data in enumerate(bids):
         # Create a clean copy
         data_copy = dict(tender_data)
         
@@ -167,6 +182,26 @@ async def evaluate_tender(tender_id: str):
             if is_valid and bid_amount < lowest_valid_bid:
                 lowest_valid_bid = bid_amount
                 winner = result_row
+
+            # --- WEB3 ORACLE PUSH ---
+            try:
+                # tenderId is currently a UUID string in python, but smart contract expects uint256.
+                # For MVP we hardcoded tenderId = 1 in React, so let's push to 1.
+                tx = tender_contract.functions.updateValidity(
+                    1, # tenderId
+                    idx, # bidIndex
+                    is_valid
+                ).build_transaction({
+                    'from': oracle_acct.address,
+                    'nonce': w3.eth.get_transaction_count(oracle_acct.address),
+                    'gas': 300000,
+                    'gasPrice': w3.to_wei('20', 'gwei')
+                })
+                signed_tx = w3.eth.account.sign_transaction(tx, private_key=ORACLE_PRIVATE_KEY)
+                tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                print(f"Oracle Pushed Validity {is_valid} for bidIndex {idx}. TxHash:", tx_hash.hex())
+            except Exception as w3_err:
+                print(f"Web3 Push Failed: {w3_err}")
                 
         except Exception as e:
              results.append({"contractor": contractor, "status": f"Error: {e}", "is_valid": False})

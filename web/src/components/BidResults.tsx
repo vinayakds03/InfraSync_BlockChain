@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Trophy, ArrowDown, ArrowUp, CheckCircle, AlertCircle, IndianRupee } from "lucide-react";
+import { Trophy, ArrowDown, ArrowUp, CheckCircle, AlertCircle, IndianRupee, Loader2 } from "lucide-react";
 
 export interface BidResult {
     contractor: string;
@@ -16,6 +16,8 @@ export interface BidResult {
 interface BidResultsProps {
     results: BidResult[];
     winner: BidResult | null;
+    onAward?: () => void;
+    isAwarding?: boolean;
 }
 
 const formatCurrency = (value: number) => {
@@ -26,7 +28,7 @@ const formatCurrency = (value: number) => {
     }).format(value);
 };
 
-export default function BidResults({ results, winner }: BidResultsProps) {
+export default function BidResults({ results, winner, onAward, isAwarding }: BidResultsProps) {
     if (!results || results.length === 0) return null;
 
     return (
@@ -79,6 +81,20 @@ export default function BidResults({ results, winner }: BidResultsProps) {
                                     </p>
                                 </div>
                             </div>
+
+                            {onAward && (
+                                <div className="mt-6 flex justify-center md:justify-start">
+                                    <button 
+                                        onClick={onAward} 
+                                        disabled={isAwarding}
+                                        className="px-6 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold flex items-center gap-2 hover:scale-105 active:scale-95 transition-transform shadow-lg disabled:opacity-50 disabled:hover:scale-100"
+                                    >
+                                        {isAwarding ? <Loader2 className="w-5 h-5 animate-spin"/> : <Trophy className="w-5 h-5"/>}
+                                        {isAwarding ? "Executing Smart Contract..." : "Award on Blockchain"}
+                                    </button>
+                                </div>
+                            )}
+
                         </div>
 
                         <div className="hidden md:flex absolute top-6 right-6">

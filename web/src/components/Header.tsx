@@ -3,11 +3,16 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Wallet } from "lucide-react";
+import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { injected } from 'wagmi/connectors'
 
 export default function Header() {
     const pathname = usePathname();
     const router = useRouter();
+    const { address, isConnected } = useAccount();
+    const { connect } = useConnect();
+    const { disconnect } = useDisconnect();
 
     // Simple hide header on home/login page
     if (pathname === "/") return null;
@@ -43,6 +48,24 @@ export default function Header() {
                     >
                         Contractor Portal
                     </Link>
+
+                    {isConnected ? (
+                        <button
+                            onClick={() => disconnect()}
+                            className="ml-2 flex items-center gap-2 text-sm font-medium text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full dark:bg-brand-900/20"
+                            title={address}
+                        >
+                            <Wallet className="w-4 h-4" /> 
+                            {address?.slice(0, 6)}...{address?.slice(-4)}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => connect({ connector: injected() })}
+                            className="ml-2 flex items-center gap-2 text-sm font-medium text-white bg-brand-600 px-3 py-1.5 rounded-full hover:bg-brand-700 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+                        >
+                            <Wallet className="w-4 h-4" /> Connect Wallet
+                        </button>
+                    )}
 
                     <button
                         onClick={handleLogout}
