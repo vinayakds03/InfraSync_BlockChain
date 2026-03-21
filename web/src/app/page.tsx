@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck, HardHat, ArrowRight, ArrowLeft, Mail, Lock, Building, Loader2, AlertCircle } from "lucide-react";
+import { ShieldCheck, Globe, HardHat, ArrowRight, ArrowLeft, Mail, Lock, Building, Loader2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useConnect, useDisconnect } from "wagmi";
+import { injected } from "wagmi/connectors";
 
 // Hardcoded credentials
 const GOV_EMAIL = "gov@infrsync.in";
@@ -13,6 +15,8 @@ const CONTRACTOR_PASSWORD = "Contractor@2024";
 
 export default function Home() {
   const router = useRouter();
+  const { connectAsync } = useConnect();
+  const { disconnectAsync } = useDisconnect();
   const [activeLogin, setActiveLogin] = useState<'gov' | 'contractor' | null>(null);
 
   // Form states
@@ -40,14 +44,31 @@ export default function Home() {
     }
 
     setIsLoggingIn(true);
-    // Simulate auth network request
-    setTimeout(() => {
-      if (activeLogin === 'contractor' && company.trim() !== '') {
-        localStorage.setItem('contractorName', company);
-      }
-      localStorage.setItem('userRole', activeLogin!);
-      router.push(`/${activeLogin}`);
-    }, 1200);
+    
+    // Attempt Web3 MetaMask Wallet Connection alongside Web2 Auth
+    connectAsync({ connector: injected() }).then(() => {
+        if (activeLogin === 'contractor' && company.trim() !== '') {
+            localStorage.setItem('contractorName', company);
+        }
+        localStorage.setItem('userRole', activeLogin!);
+        router.push(`/${activeLogin}`);
+    }).catch(async (err) => {
+        console.error(err);
+        
+        // If they were already connected somehow but it errored, let's just proceed for robustness,
+        // otherwise throw auth error.
+        if (err.name === 'ConnectorAlreadyConnectedError') {
+             if (activeLogin === 'contractor' && company.trim() !== '') {
+                localStorage.setItem('contractorName', company);
+            }
+            localStorage.setItem('userRole', activeLogin!);
+            router.push(`/${activeLogin}`);
+            return;
+        }
+
+        setAuthError("You must approve the MetaMask connection to securely login.");
+        setIsLoggingIn(false);
+    });
   };
 
   const resetForm = () => {
@@ -131,6 +152,26 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                {/* Public Audit Card Select */}
+                <div
+                  onClick={() => router.push('/public')}
+                  className="group cursor-pointer glass-panel rounded-3xl p-6 transition-all duration-300 hover:shadow-2xl hover:border-blue-500 hover:-translate-y-1 relative overflow-hidden"
+                >
+                  <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-400 to-blue-600 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
+                  <div className="flex items-center gap-6">
+                    <div className="bg-blue-50 dark:bg-blue-900/40 p-4 rounded-2xl text-blue-600 dark:text-blue-400">
+                      <Globe className="w-8 h-8" /> 
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">Public Transparency</h3>
+                      <span className="text-blue-600 dark:text-blue-400 text-sm font-semibold flex items-center gap-1 mt-1 group-hover:gap-2 transition-all">
+                        Audit Blockchain Bids <ArrowRight className="w-4 h-4" />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </motion.div>
           ) : (

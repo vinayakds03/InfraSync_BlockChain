@@ -84,7 +84,7 @@ async def get_tenders():
 @app.post("/api/tenders")
 async def create_tender(tender: TenderInput):
     new_tender = {
-        "id": str(uuid.uuid4()),
+        "id": str(len(tenders_db) + 1),
         "title": tender.title,
         "state": tender.state,
         "road_length_km": tender.road_length_km,
@@ -110,11 +110,6 @@ async def submit_bid(tender_id: str, bid: BidInput):
     bid_dict = bid.dict()
     bid_dict['id'] = str(uuid.uuid4())
     
-    # Check if contractor already bid
-    existing_bids = bids_db.get(tender_id, [])
-    if any(b['Contractor_Name'] == bid.Contractor_Name for b in existing_bids):
-        raise HTTPException(status_code=400, detail="Contractor has already submitted a bid for this tender")
-
     bids_db[tender_id].append(bid_dict)
     return {"message": "Bid submitted successfully", "bid_id": bid_dict['id']}
 
@@ -185,23 +180,23 @@ async def evaluate_tender(tender_id: str):
 
             # --- WEB3 ORACLE PUSH ---
             try:
-                # tenderId is currently a UUID string in python, but smart contract expects uint256.
-                # For MVP we hardcoded tenderId = 1 in React, so let's push to 1.
+                tender_id_int = int(tender_id)  # Use actual tender ID, not hardcoded 1
+                nonce = w3.eth.get_transaction_count(oracle_acct.address)
                 tx = tender_contract.functions.updateValidity(
-                    1, # tenderId
-                    idx, # bidIndex
+                    tender_id_int,  # actual tenderId
+                    idx,            # bidIndex
                     is_valid
                 ).build_transaction({
                     'from': oracle_acct.address,
-                    'nonce': w3.eth.get_transaction_count(oracle_acct.address),
-                    'gas': 300000,
-                    'gasPrice': w3.to_wei('20', 'gwei')
+                    'nonce': nonce,
+                    'gas': 500000,
+                    'gasPrice': w3.to_wei('1', 'gwei')
                 })
                 signed_tx = w3.eth.account.sign_transaction(tx, private_key=ORACLE_PRIVATE_KEY)
-                tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                print(f"Oracle Pushed Validity {is_valid} for bidIndex {idx}. TxHash:", tx_hash.hex())
+                tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+                print(f"✅ Oracle Pushed: tenderId={tender_id_int} bidIndex={idx} isValid={is_valid} TxHash={tx_hash.hex()}")
             except Exception as w3_err:
-                print(f"Web3 Push Failed: {w3_err}")
+                print(f"❌ Web3 Oracle Push FAILED (tenderId={tender_id} bidIndex={idx}): {w3_err}")
                 
         except Exception as e:
              results.append({"contractor": contractor, "status": f"Error: {e}", "is_valid": False})

@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, CheckCircle, ShieldCheck, Loader2, Play } from "lucide-react";
 import BidResults, { BidResult } from "@/components/BidResults";
-import { useWriteContract } from 'wagmi';
+import { useWriteContract, useAccount } from 'wagmi';
+import { parseAbi } from 'viem';
 
 interface Tender {
     id: string;
@@ -23,6 +24,7 @@ export default function GovDashboard() {
     const [evalResults, setEvalResults] = useState<{ results: BidResult[], winner: BidResult | null } | null>(null);
     const [isAwarding, setIsAwarding] = useState(false);
     const { writeContractAsync } = useWriteContract();
+    const { isConnected } = useAccount();
 
     // Form State
     const [newTitle, setNewTitle] = useState("");
@@ -95,13 +97,18 @@ export default function GovDashboard() {
     };
 
     const handleAwardBlockchain = async () => {
+        if (!isConnected) {
+            alert("⚠️ Web3 Security Error: Please connect your MetaMask Wallet using the button in the top right corner before awarding the contract!");
+            return;
+        }
         setIsAwarding(true);
         try {
             const txHash = await writeContractAsync({
                 address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-                abi: ["function awardContract(uint256 tenderId, uint256 bidIndex)"],
+                abi: parseAbi(["function awardContract(uint256 tenderId, uint256 bidIndex)"]),
                 functionName: 'awardContract',
-                args: [BigInt(1), BigInt(0)] // For MVP, we mock tender 1, bid 0
+                args: [BigInt(1), BigInt(0)],
+                gas: BigInt(500000) // Explicit gas cap — Hardhat node max is 16,777,216
             });
             console.log("Award Tx Hash:", txHash);
             alert("✅ Contract Awarded! Soulbound NFT Certificate generated and issued to the winner's wallet.");
@@ -213,7 +220,7 @@ export default function GovDashboard() {
                                             </div>
                                         </div>
 
-                                        <div className="flex-shrink-0">
+                                        <div className="flex-shrink-0 flex flex-col items-end gap-2">
                                             {tender.status === 'OPEN' ? (
                                                 <button
                                                     onClick={() => handleEvaluate(tender.id)}
@@ -221,12 +228,21 @@ export default function GovDashboard() {
                                                     className="px-5 py-2.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-medium hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2"
                                                 >
                                                     {evaluatingId === tender.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                                                    Evaluate & Award
+                                                    Evaluate &amp; Award
                                                 </button>
                                             ) : (
-                                                <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-medium">
-                                                    <CheckCircle className="w-5 h-5" /> Evaluation Concluded
-                                                </span>
+                                                <div className="flex flex-col items-end gap-2">
+                                                    <span className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
+                                                        <CheckCircle className="w-5 h-5" /> Evaluation Concluded
+                                                    </span>
+                                                    <button
+                                                        onClick={handleAwardBlockchain}
+                                                        disabled={isAwarding}
+                                                        className="px-4 py-2 rounded-full bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 transition disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        {isAwarding ? <Loader2 className="w-4 h-4 animate-spin" /> : "🏆 Award on Blockchain"}
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </motion.div>

@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HardHat, Loader2, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
 import BidForm from "@/components/BidForm";
-import { useWriteContract } from 'wagmi';
-import { stringToHex, pad } from 'viem';
+import { useWriteContract, useAccount } from 'wagmi';
+import { stringToHex, pad, parseAbi } from 'viem';
 
 interface Tender {
     id: string;
@@ -17,6 +17,7 @@ interface Tender {
 }
 
 export default function ContractorDashboard() {
+    const { isConnected } = useAccount();
     const { writeContractAsync } = useWriteContract();
     const [tenders, setTenders] = useState<Tender[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -44,10 +45,14 @@ export default function ContractorDashboard() {
 
     const handleBidSubmit = async (formData: Record<string, any>) => {
         if (!selectedTender) return;
+        if (!isConnected) {
+            alert("⚠️ Web3 Security Error: Please connect your MetaMask Wallet using the button in the top right corner before submitting a bid!");
+            return;
+        }
         setSubmitting(true);
         setSuccessMsg(null);
 
-        const finalData = {
+        const finalData: Record<string, any> & { State: string; Road_Length_km: number } = {
             ...formData,
             State: selectedTender.state,
             Road_Length_km: selectedTender.road_length_km
@@ -56,51 +61,73 @@ export default function ContractorDashboard() {
         try {
             // Ensure state code is exactly 32 bytes for the smart contract
             const stateCodeBytes32 = pad(stringToHex(finalData.State.substring(0, 2).toUpperCase() || "MH"), { size: 32 });
-            
-            // Web3 Smart Contract Submission
+
+            // Step 1: Submit bid data to backend for ML evaluation first (10s timeout)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            let backendRes: Response;
+            try {
+                backendRes = await fetch(`http://localhost:8000/api/tenders/${selectedTender.id}/bids`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(finalData),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+            } catch (fetchErr: any) {
+                clearTimeout(timeoutId);
+                if (fetchErr.name === 'AbortError') {
+                    throw new Error("⏱️ Backend timed out (10s). Is 'uvicorn api:app --reload' running in a terminal?");
+                }
+                throw new Error("🔌 Cannot reach backend at localhost:8000. Start the Python API server first.");
+            }
+
+            if (!backendRes.ok) {
+                const errData = await backendRes.json();
+                throw new Error(errData.detail || "Backend rejected the bid.");
+            }
+
+            // Step 2: Submit bid to blockchain via MetaMask
+            alert("✅ Bid saved to backend! MetaMask will now open to record it on the blockchain. Please check your browser extension.");
+
+            // fd = safe any-cast for dynamic form fields (all filled at runtime by BidForm)
+            const fd = finalData as Record<string, any>;
             const txHash = await writeContractAsync({
-                address: "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Hardhat Local Default
-                abi: [
-                    "function submitBid(uint256 tenderId, uint256 bidAmount, bytes32 stateCode, uint8 roadType, uint8 terrainType, uint8 soilType, uint256 roadLengthMeters, uint8 lanes, uint256 numWorkers, uint256 durationDays, uint256 subgradeCBRValueX100, uint256 pavementThicknessMm, uint256 earthworkVolumeM3, uint8 bridgeCount, uint8 culvertCount)"
-                ],
+                address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                abi: parseAbi([
+                    "function submitBid(uint256 tenderId, uint96 bidAmount, bytes32 stateCode, uint8 roadType, uint8 terrainType, uint8 soilType, uint256 roadLengthMeters, uint8 lanes, uint256 numWorkers, uint256 durationDays, uint256 subgradeCBRValueX100, uint256 pavementThicknessMm, uint256 earthworkVolumeM3, uint8 bridgeCount, uint8 culvertCount)"
+                ]),
                 functionName: 'submitBid',
                 args: [
-                    BigInt(selectedTender.id || 1), // tenderId
-                    BigInt(finalData.Bid_Amount || 0), // bidAmount
-                    stateCodeBytes32, // bytes32 stateCode
+                    BigInt(selectedTender.id || 1),
+                    BigInt(fd.Bid_Amount || 0),
+                    stateCodeBytes32,
                     0, // RoadType.Highway
                     0, // TerrainType.Flat
                     0, // SoilType.Clay
-                    BigInt(Math.floor(finalData.Road_Length_km * 1000)), // scale km to meters
-                    Number(finalData.Lanes || 2),
-                    BigInt(finalData.Num_Workers || 0),
-                    BigInt(finalData.Duration_days || 0),
-                    BigInt(Math.floor((finalData.Subgrade_CBR_Value || 0) * 100)), // scale CBR * 100
-                    BigInt(finalData.Pavement_Thickness_mm || 0),
-                    BigInt(finalData.Earthwork_Volume_m3 || 0),
-                    Number(finalData.Bridge_Count || 0),
-                    Number(finalData.Culvert_Count || 0)
-                ]
+                    BigInt(Math.floor(finalData.Road_Length_km * 1000)),
+                    Number(fd.Lanes || 2),
+                    BigInt(fd.Num_Workers || 0),
+                    BigInt(fd.Duration_days || 0),
+                    BigInt(Math.floor((fd.Subgrade_CBR_Value || 0) * 100)),
+                    BigInt(fd.Pavement_Thickness_mm || 0),
+                    BigInt(fd.Earthwork_Volume_m3 || 0),
+                    Number(fd.Bridge_Count || 0),
+                    Number(fd.Culvert_Count || 0)
+                ],
+                gas: BigInt(500000)
             });
 
-            console.log("Blockchain Txn Hash:", txHash);
-
-            // Optional: Backup the bid to backend Webhook / DB
-            await fetch(`http://localhost:8000/api/tenders/${selectedTender.id}/bids`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({...finalData, txHash}),
-            }).catch(() => console.log("Backend offline, but blockchain submission succeeded!"));
-
-            setSuccessMsg("Smart Contract Executed! Your bid is now securely recorded on the blockchain.");
+            console.log("✅ Blockchain Txn Hash:", txHash);
+            setSuccessMsg("Bid submitted to AI evaluation and recorded on the Blockchain!");
             setTimeout(() => {
                 setSelectedTender(null);
                 setSuccessMsg(null);
                 fetchTenders();
             }, 3000);
         } catch (err: any) {
-            console.error("Blockchain error:", err);
-            alert(err.message || "Smart contract transaction failed. Check MetaMask.");
+            console.error("Submission error:", err);
+            alert(err.shortMessage || err.message || "Transaction failed. Check MetaMask.");
         } finally {
             setSubmitting(false);
         }
