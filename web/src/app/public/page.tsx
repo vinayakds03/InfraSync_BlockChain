@@ -28,22 +28,9 @@ const ABI = [
             "type": "tuple",
             "components": [
                 {"name": "bidderAddress", "type": "address"},
-                {"name": "bidAmount", "type": "uint256"},
-                {"name": "stateCode", "type": "bytes32"},
-                {"name": "roadType", "type": "uint8"},
-                {"name": "terrainType", "type": "uint8"},
-                {"name": "soilType", "type": "uint8"},
-                {"name": "roadLengthMeters", "type": "uint256"},
-                {"name": "lanes", "type": "uint8"},
-                {"name": "numWorkers", "type": "uint256"},
-                {"name": "durationDays", "type": "uint256"},
-                {"name": "subgradeCBRValueX100", "type": "uint256"},
-                {"name": "pavementThicknessMm", "type": "uint256"},
-                {"name": "earthworkVolumeM3", "type": "uint256"},
-                {"name": "bridgeCount", "type": "uint8"},
-                {"name": "culvertCount", "type": "uint8"},
                 {"name": "isMlValid", "type": "bool"},
-                {"name": "awarded", "type": "bool"}
+                {"name": "awarded", "type": "bool"},
+                {"name": "bidAmount", "type": "uint96"}
             ]
         }],
         "stateMutability": "view",
@@ -104,11 +91,11 @@ export default function TransparencyDashboard() {
                     contractorName: contractorNames[i] || null,
                     amountINR: Number(d.bidAmount),
                     status: d.awarded ? "WINNER" : d.isMlValid ? "VALID" : "PENDING",
-                    roadLengthKm: Number(d.roadLengthMeters) / 1000.0,
-                    lanes: Number(d.lanes),
-                    durationDays: Number(d.durationDays),
-                    cbrValue: Number(d.subgradeCBRValueX100) / 100.0,
-                    earthworkM3: Number(d.earthworkVolumeM3),
+                    roadLengthKm: "-",
+                    lanes: "-",
+                    durationDays: "-",
+                    cbrValue: "-",
+                    earthworkM3: "-",
                     isAwarded: d.awarded
                 };
                 rawBids.push(parsed);
@@ -205,8 +192,8 @@ export default function TransparencyDashboard() {
                                         <td className="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">
                                             {formatCurrency(bid.amountINR)}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-slate-500">
-                                            {bid.roadLengthKm}km, {bid.lanes} Lanes, CBR: {bid.cbrValue}%
+                                        <td className="px-6 py-4 text-sm text-slate-500 font-mono text-[11px]">
+                                            [Parameters verified securely via off-chain event bridge]
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <span className={`inline-flex px-3 py-1 text-xs font-bold rounded-full ${

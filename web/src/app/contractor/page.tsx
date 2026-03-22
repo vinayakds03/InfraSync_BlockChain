@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { HardHat, Loader2, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
+import { HardHat, Loader2, ArrowLeft, ArrowRight, CheckCircle, Award } from "lucide-react";
+import Link from "next/link";
 import BidForm from "@/components/BidForm";
 import { useWriteContract, useAccount } from 'wagmi';
 import { stringToHex, pad, parseAbi } from 'viem';
@@ -148,14 +149,23 @@ export default function ContractorDashboard() {
                         <p className="text-slate-500 dark:text-slate-400">Find and bid on infrastructure projects</p>
                     </div>
                 </div>
-                {selectedTender && (
-                    <button
-                        onClick={() => setSelectedTender(null)}
-                        className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-medium"
-                    >
-                        <ArrowLeft className="w-5 h-5" /> Back to Tenders
-                    </button>
-                )}
+                <div className="flex items-center gap-4">
+                    {!selectedTender ? (
+                        <Link
+                            href="/contractor/profile"
+                            className="flex items-center gap-2 text-accent-600 hover:text-accent-800 bg-accent-100/50 dark:bg-accent-900/30 px-4 py-2 rounded-full transition-colors font-medium border border-accent-200 dark:border-accent-800 shadow-sm"
+                        >
+                            <Award className="w-5 h-5" /> View NFT Certificates
+                        </Link>
+                    ) : (
+                        <button
+                            onClick={() => setSelectedTender(null)}
+                            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-medium"
+                        >
+                            <ArrowLeft className="w-5 h-5" /> Back to Tenders
+                        </button>
+                    )}
+                </div>
             </div>
 
             <AnimatePresence mode="wait">

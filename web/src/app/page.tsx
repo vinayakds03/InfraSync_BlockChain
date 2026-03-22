@@ -137,16 +137,16 @@ export default function Home() {
                 {/* Contractor Login Card Select */}
                 <div
                   onClick={() => setActiveLogin('contractor')}
-                  className="group cursor-pointer glass-panel rounded-3xl p-6 transition-all duration-300 hover:shadow-2xl hover:border-accent-500 hover:-translate-y-1 relative overflow-hidden"
+                  className="group cursor-pointer glass-panel rounded-3xl p-6 transition-all duration-300 hover:shadow-2xl hover:border-blue-500 hover:-translate-y-1 relative overflow-hidden"
                 >
-                  <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-accent-400 to-accent-600 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
+                  <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-400 to-blue-600 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
                   <div className="flex items-center gap-6">
-                    <div className="bg-accent-50 dark:bg-accent-900/40 p-4 rounded-2xl text-accent-600 dark:text-accent-400">
+                    <div className="bg-blue-50 dark:bg-blue-900/40 p-4 rounded-2xl text-blue-600 dark:text-blue-400">
                       <HardHat className="w-8 h-8" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">Valid Contractor</h3>
-                      <span className="text-accent-600 dark:text-accent-400 text-sm font-semibold flex items-center gap-1 mt-1 group-hover:gap-2 transition-all">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">Contractor</h3>
+                      <span className="text-blue-600 dark:text-blue-400 text-sm font-semibold flex items-center gap-1 mt-1 group-hover:gap-2 transition-all">
                         Proceed to Login <ArrowRight className="w-4 h-4" />
                       </span>
                     </div>
@@ -191,7 +191,7 @@ export default function Home() {
               </button>
 
               <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl">
-                <div className={`p-8 text-center bg-gradient-to-br ${activeLogin === 'gov' ? 'from-brand-600 to-brand-800' : 'from-accent-600 to-accent-800'}`}>
+                <div className={`p-8 text-center bg-gradient-to-br ${activeLogin === 'gov' ? 'from-brand-600 to-brand-800' : 'from-blue-600 to-blue-800'}`}>
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner">
                     {activeLogin === 'gov' ? <ShieldCheck className="w-8 h-8 text-white" /> : <HardHat className="w-8 h-8 text-white" />}
                   </div>
@@ -209,7 +209,7 @@ export default function Home() {
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Registered Company Name</label>
                       <div className="relative">
                         <Building className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input required type="text" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-accent-500 focus:border-accent-500 outline-none transition-all shadow-sm" placeholder="e.g. Alpha Infra Ltd." />
+                        <input required type="text" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" placeholder="e.g. Alpha Infra Ltd." />
                       </div>
                     </div>
                   )}
@@ -241,7 +241,7 @@ export default function Home() {
                     disabled={isLoggingIn}
                     className={`w-full mt-2 py-3.5 rounded-xl text-white font-bold shadow-lg transition-transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 ${activeLogin === 'gov'
                       ? 'bg-brand-600 hover:bg-brand-700 shadow-brand-500/30'
-                      : 'bg-accent-600 hover:bg-accent-700 shadow-accent-500/30'
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
                       }`}
                   >
                     {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : "Authenticate Identity"}
