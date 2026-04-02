@@ -3,6 +3,7 @@
 import React, { useState, useRef } from "react";
 import { UploadCloud, FileType, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 interface FileUploadProps {
     onFileUpload: (file: File) => void;
@@ -27,7 +28,7 @@ export default function FileUpload({ onFileUpload, isLoading, error }: FileUploa
 
     const processFile = (file: File) => {
         if (file.type !== "text/csv" && !file.name.endsWith(".csv")) {
-            alert("Please upload a valid CSV file.");
+            toast.error("Please upload a valid CSV file.");
             return;
         }
         setSelectedFile(file);

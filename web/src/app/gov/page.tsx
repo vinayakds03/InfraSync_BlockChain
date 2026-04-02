@@ -6,6 +6,7 @@ import { Plus, CheckCircle, ShieldCheck, Loader2, Play } from "lucide-react";
 import BidResults, { BidResult } from "@/components/BidResults";
 import { useWriteContract, useAccount } from 'wagmi';
 import { parseAbi } from 'viem';
+import { toast } from "sonner";
 
 interface Tender {
     id: string;
@@ -86,11 +87,11 @@ export default function GovDashboard() {
                 });
                 fetchTenders(); // Refresh to show CLOSED status
             } else {
-                alert(data.detail || "Error evaluating tender");
+                toast.error(data.detail || "Error evaluating tender");
             }
         } catch (e) {
             console.error(e);
-            alert("Evaluation failed.");
+            toast.error("Evaluation failed.");
         } finally {
             setEvaluatingId(null);
         }
@@ -98,7 +99,7 @@ export default function GovDashboard() {
 
     const handleAwardBlockchain = async () => {
         if (!isConnected) {
-            alert("⚠️ Web3 Security Error: Please connect your MetaMask Wallet using the button in the top right corner before awarding the contract!");
+            toast.error("Web3 Security Error", { description: "Please connect your MetaMask Wallet using the button in the top right corner before awarding the contract!" });
             return;
         }
         setIsAwarding(true);
@@ -111,10 +112,10 @@ export default function GovDashboard() {
                 gas: BigInt(500000) // Explicit gas cap — Hardhat node max is 16,777,216
             });
             console.log("Award Tx Hash:", txHash);
-            alert("✅ Contract Awarded! Soulbound NFT Certificate generated and issued to the winner's wallet.");
+            toast.success("Contract Awarded!", { description: "Soulbound NFT Certificate generated and issued to the winner's wallet." });
         } catch(e: any) {
             console.error(e);
-            alert(e.message || "MetaMask Transaction failed!");
+            toast.error("Transaction failed", { description: e.message || "MetaMask Transaction failed!" });
         } finally {
             setIsAwarding(false);
         }

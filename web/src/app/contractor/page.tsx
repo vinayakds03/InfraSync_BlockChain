@@ -7,6 +7,7 @@ import Link from "next/link";
 import BidForm from "@/components/BidForm";
 import { useWriteContract, useAccount } from 'wagmi';
 import { stringToHex, pad, parseAbi } from 'viem';
+import { toast } from "sonner";
 
 interface Tender {
     id: string;
@@ -47,7 +48,7 @@ export default function ContractorDashboard() {
     const handleBidSubmit = async (formData: Record<string, any>) => {
         if (!selectedTender) return;
         if (!isConnected) {
-            alert("⚠️ Web3 Security Error: Please connect your MetaMask Wallet using the button in the top right corner before submitting a bid!");
+            toast.error("Web3 Security Error", { description: "Please connect your MetaMask Wallet using the button in the top right corner before submitting a bid!" });
             return;
         }
         setSubmitting(true);
@@ -89,7 +90,7 @@ export default function ContractorDashboard() {
             }
 
             // Step 2: Submit bid to blockchain via MetaMask
-            alert("✅ Bid saved to backend! MetaMask will now open to record it on the blockchain. Please check your browser extension.");
+            toast.info("Bid saved to backend", { description: "MetaMask will now open to record it on the blockchain. Please check your browser extension." });
 
             // fd = safe any-cast for dynamic form fields (all filled at runtime by BidForm)
             const fd = finalData as Record<string, any>;
@@ -128,7 +129,7 @@ export default function ContractorDashboard() {
             }, 3000);
         } catch (err: any) {
             console.error("Submission error:", err);
-            alert(err.shortMessage || err.message || "Transaction failed. Check MetaMask.");
+            toast.error("Transaction failed", { description: err.shortMessage || err.message || "Check MetaMask." });
         } finally {
             setSubmitting(false);
         }
