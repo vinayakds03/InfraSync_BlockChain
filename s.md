@@ -68,3 +68,8 @@ Whenever you restart your local Hardhat node (Terminal 1), MetaMask's internal h
    - Go to `http://localhost:3000/contractor/profile`.
    - Switch MetaMask back to the **Contractor Wallet**.
    - Your permanent, beautiful Holographic Soulbound Certificate will instantly load and render directly from the blockchain!
+
+
+
+-- milestone completion 
+The underlying smart contract logic still correctly pays out the 30/30/40 splits for each individual milestone, but the UI now reflects the overall project progress exactly like you asked! Refresh your page to see the updated labels.

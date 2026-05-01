@@ -89,6 +89,8 @@ async def create_tender(tender: TenderInput):
         "state": tender.state,
         "road_length_km": tender.road_length_km,
         "status": "OPEN", # OPEN or CLOSED
+        "winner_contractor": None,
+        "winner_bid": None
     }
     tenders_db.append(new_tender)
     bids_db[new_tender["id"]] = []
@@ -204,8 +206,15 @@ async def evaluate_tender(tender_id: str):
     # Close the tender ONLY if a valid winner was found
     if winner:
         tender["status"] = "CLOSED"
+        tender["winner_contractor"] = winner["contractor"]
+        tender["winner_bid"] = winner["bid"]
 
     return {"bids": results, "winner": winner}
+
+@app.get("/api/contractor/{contractor_name}/contracts")
+async def get_contractor_contracts(contractor_name: str):
+    active_contracts = [t for t in tenders_db if t["status"] == "CLOSED" and t.get("winner_contractor") == contractor_name]
+    return {"contracts": active_contracts}
 
 
 if __name__ == "__main__":

@@ -4,9 +4,120 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, CheckCircle, ShieldCheck, Loader2, Play } from "lucide-react";
 import BidResults, { BidResult } from "@/components/BidResults";
-import { useWriteContract, useAccount } from 'wagmi';
+import { useWriteContract, useAccount, usePublicClient } from 'wagmi';
 import { parseAbi } from 'viem';
 import { toast } from "sonner";
+
+const ABI = parseAbi([
+    "function awardContract(uint256 tenderId, uint256 bidIndex)",
+    "function getMilestonesCount(uint256 tenderId) view returns (uint256)",
+    "function getMilestoneDetails(uint256 tenderId, uint256 milestoneIndex) view returns ((uint8 percentage, bool isProofSubmitted, bool isApproved, string proofURI))",
+    "function approveMilestone(uint256 tenderId, uint256 milestoneIndex)"
+]);
+const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
+function MilestoneManager({ tenderId }: { tenderId: string }) {
+    const publicClient = usePublicClient();
+    const { writeContractAsync } = useWriteContract();
+    const [milestones, setMilestones] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    const fetchMilestones = async () => {
+        if (!publicClient) return;
+        try {
+            const count = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: ABI,
+                functionName: 'getMilestonesCount',
+                args: [BigInt(tenderId)],
+            });
+            const ms = [];
+            for(let i=0; i<Number(count); i++) {
+                const details = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: ABI,
+                    functionName: 'getMilestoneDetails',
+                    args: [BigInt(tenderId), BigInt(i)],
+                });
+                ms.push({ index: i, percentage: details.percentage, isProofSubmitted: details.isProofSubmitted, isApproved: details.isApproved, proofURI: details.proofURI });
+            }
+            setMilestones(ms);
+        } catch (e) {
+            console.error("Failed to fetch milestones", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchMilestones();
+    }, [tenderId, publicClient]);
+
+    const handleApprove = async (index: number) => {
+        setLoading(true);
+        try {
+            await writeContractAsync({
+                address: CONTRACT_ADDRESS,
+                abi: ABI,
+                functionName: 'approveMilestone',
+                args: [BigInt(tenderId), BigInt(index)],
+            });
+            toast.success("Milestone Approved! Funds Released (Simulated).");
+            fetchMilestones();
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to approve milestone");
+        }
+        setLoading(false);
+    };
+
+    if (milestones.length === 0) return null;
+
+    return (
+        <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 w-full">
+            <h4 className="font-bold mb-3 text-sm">Contract Milestones</h4>
+            <div className="space-y-3">
+                {milestones.map((m) => {
+                    const isPreviousApproved = m.index === 0 || milestones[m.index - 1].isApproved;
+                    const isLocked = !m.isApproved && !isPreviousApproved;
+                    const cumulativePercentage = milestones.slice(0, m.index + 1).reduce((sum, ms) => sum + ms.percentage, 0);
+
+                    if (isLocked) {
+                        return (
+                            <div key={m.index} className="flex flex-col gap-2 p-3 bg-slate-100 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800 opacity-60">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="font-medium text-slate-500">Milestone {m.index + 1} ({cumulativePercentage}%)</span>
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-500">🔒 Locked</span>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                    <div key={m.index} className="flex flex-col gap-2 p-3 bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-100 dark:border-slate-800">
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="font-medium">Milestone {m.index + 1} ({cumulativePercentage}%)</span>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${m.isApproved ? 'bg-green-100 text-green-700' : m.isProofSubmitted ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}`}>
+                                {m.isApproved ? 'Paid (Simulated)' : m.isProofSubmitted ? 'Review Proof' : 'Pending Proof'}
+                            </span>
+                        </div>
+                        {m.isProofSubmitted && !m.isApproved && (
+                            <div className="flex gap-3 mt-2 items-center text-sm">
+                                <a href={m.proofURI} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">View Proof Document</a>
+                                <button 
+                                    onClick={() => handleApprove(m.index)} 
+                                    disabled={loading}
+                                    className="ml-auto bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-xs font-bold disabled:opacity-50"
+                                >
+                                    {loading ? '...' : 'Approve & Release Funds'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
 
 interface Tender {
     id: string;
@@ -105,8 +216,8 @@ export default function GovDashboard() {
         setIsAwarding(true);
         try {
             const txHash = await writeContractAsync({
-                address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-                abi: parseAbi(["function awardContract(uint256 tenderId, uint256 bidIndex)"]),
+                address: CONTRACT_ADDRESS,
+                abi: ABI,
                 functionName: 'awardContract',
                 args: [BigInt(1), BigInt(0)],
                 gas: BigInt(500000) // Explicit gas cap — Hardhat node max is 16,777,216
@@ -232,17 +343,20 @@ export default function GovDashboard() {
                                                     Evaluate &amp; Award
                                                 </button>
                                             ) : (
-                                                <div className="flex flex-col items-end gap-2">
+                                                <div className="flex flex-col items-end gap-2 w-full">
                                                     <span className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
                                                         <CheckCircle className="w-5 h-5" /> Evaluation Concluded
                                                     </span>
                                                     <button
                                                         onClick={handleAwardBlockchain}
                                                         disabled={isAwarding}
-                                                        className="px-4 py-2 rounded-full bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 transition disabled:opacity-50 flex items-center gap-2"
+                                                        className="px-4 py-2 rounded-full bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 transition disabled:opacity-50 flex items-center gap-2 mb-2"
                                                     >
                                                         {isAwarding ? <Loader2 className="w-4 h-4 animate-spin" /> : "🏆 Award on Blockchain"}
                                                     </button>
+                                                    
+                                                    {/* Milestone Manager for Closed Tenders */}
+                                                    <MilestoneManager tenderId={tender.id} />
                                                 </div>
                                             )}
                                         </div>

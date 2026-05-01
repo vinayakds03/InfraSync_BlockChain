@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Award, ShieldCheck, HardHat, Loader2, ExternalLink, Calendar, IndianRupee, Hash } from "lucide-react";
-import { useAccount, usePublicClient } from 'wagmi';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { parseAbi, formatUnits } from 'viem';
 
 // ─── Contract Config ────────────────────────────────────────────────────────
@@ -11,8 +11,11 @@ const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as const;
 
 const ABI = parseAbi([
     "function balanceOf(address owner) view returns (uint256)",
-    "function getCertificateInfo(uint256 tokenId) view returns (uint256 tenderId, uint96 bidAmount, uint64 awardedAt, address winner)",
+    "function getCertificateInfo(uint256 tokenId) view returns (uint256 tenderId, uint96 bidAmount, uint64 awardedAt, address winner, bool isMilestone, uint8 milestoneIndex)",
     "event ContractAwarded(uint256 indexed tenderId, address indexed winningBidder, uint256 certificateTokenId, uint96 bidAmount)",
+    "function getMilestonesCount(uint256 tenderId) view returns (uint256)",
+    "function getMilestoneDetails(uint256 tenderId, uint256 milestoneIndex) view returns ((uint8 percentage, bool isProofSubmitted, bool isApproved, string proofURI))",
+    "function submitMilestoneProof(uint256 tenderId, uint256 milestoneIndex, string proofURI)"
 ]);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -22,6 +25,8 @@ interface CertData {
     bidAmount: bigint;
     awardedAt: bigint;
     winner: string;
+    isMilestone: boolean;
+    milestoneIndex: number;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -40,13 +45,66 @@ function formatDate(timestamp: bigint): string {
 }
 
 // ─── Certificate Card ────────────────────────────────────────────────────────
-function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
+function CertificateCard({ cert, index, publicClient, address }: { cert: CertData; index: number; publicClient: any; address: string | undefined }) {
+    const { writeContractAsync } = useWriteContract();
+    const [milestones, setMilestones] = useState<any[]>([]);
+    const [proofURI, setProofURI] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (!publicClient) return;
+        const fetchMilestones = async () => {
+            try {
+                const count = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: ABI,
+                    functionName: 'getMilestonesCount',
+                    args: [cert.tenderId],
+                });
+                const ms = [];
+                for(let i=0; i<Number(count); i++) {
+                    const details = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: ABI,
+                        functionName: 'getMilestoneDetails',
+                        args: [cert.tenderId, BigInt(i)],
+                    });
+                    ms.push({ index: i, percentage: details.percentage, isProofSubmitted: details.isProofSubmitted, isApproved: details.isApproved, proofURI: details.proofURI });
+                }
+                setMilestones(ms);
+            } catch (e) {
+                console.error("Failed to fetch milestones", e);
+            }
+        };
+        fetchMilestones();
+    }, [cert.tenderId, publicClient]);
+
+    const handleSubmitProof = async (milestoneIndex: number) => {
+        if (!proofURI) return alert("Please enter a Proof URI");
+        setSubmitting(true);
+        try {
+            await writeContractAsync({
+                address: CONTRACT_ADDRESS,
+                abi: ABI,
+                functionName: 'submitMilestoneProof',
+                args: [cert.tenderId, BigInt(milestoneIndex), proofURI],
+            });
+            alert("Proof submitted successfully!");
+            // Ideally refetch milestones here
+        } catch(e) {
+            console.error(e);
+            alert("Failed to submit proof");
+        }
+        setSubmitting(false);
+        setProofURI("");
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: index * 0.12 }}
-            className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600 p-[2px] shadow-2xl"
+            className={`relative overflow-hidden rounded-3xl p-[2px] shadow-2xl ${cert.isMilestone ? 'bg-gradient-to-br from-blue-400 via-cyan-500 to-indigo-600' : 'bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600'}`}
         >
             {/* Holographic background */}
             <div className="absolute inset-0 opacity-25 mix-blend-overlay pointer-events-none">
@@ -60,12 +118,14 @@ function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
                 </svg>
             </div>
 
-            <div className="relative bg-slate-900 rounded-[22px] p-7 flex flex-col gap-6">
+            <div className="relative h-full bg-slate-900 rounded-[22px] p-7 flex flex-col gap-6">
                 {/* Header */}
                 <div className="flex justify-between items-start">
                     <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-5 h-5 text-yellow-400" />
-                        <span className="text-yellow-400 font-bold tracking-widest text-xs uppercase">Official Certificate</span>
+                        <ShieldCheck className={`w-5 h-5 ${cert.isMilestone ? 'text-blue-400' : 'text-yellow-400'}`} />
+                        <span className={`${cert.isMilestone ? 'text-blue-400' : 'text-yellow-400'} font-bold tracking-widest text-xs uppercase`}>
+                            {cert.isMilestone ? `Milestone ${cert.milestoneIndex + 1} Receipt` : 'Official Certificate'}
+                        </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="bg-white/10 px-2.5 py-1 rounded-full text-white text-[10px] font-mono border border-white/20 tracking-widest">
@@ -76,7 +136,9 @@ function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
 
                 {/* Title */}
                 <div>
-                    <h2 className="text-2xl font-black text-white leading-tight">Infrastructure<br/>Excellence Award</h2>
+                    <h2 className="text-2xl font-black text-white leading-tight">
+                        {cert.isMilestone ? 'Milestone Payout' : 'Infrastructure\nExcellence Award'}
+                    </h2>
                     <p className="text-slate-400 text-xs mt-1">Awarded securely on the Ethereum Blockchain</p>
                 </div>
 
@@ -86,7 +148,7 @@ function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5 flex items-center gap-1">
                             <Hash className="w-3 h-3" /> Token ID
                         </p>
-                        <p className="text-yellow-400 font-bold font-mono text-lg">#{cert.tokenId.toString()}</p>
+                        <p className={`font-bold font-mono text-lg ${cert.isMilestone ? 'text-blue-400' : 'text-yellow-400'}`}>#{cert.tokenId.toString()}</p>
                     </div>
                     <div className="bg-black/40 rounded-xl p-3 border border-white/10">
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5 flex items-center gap-1">
@@ -96,7 +158,7 @@ function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
                     </div>
                     <div className="bg-black/40 rounded-xl p-3 border border-white/10">
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                            <IndianRupee className="w-3 h-3" /> Awarded Bid
+                            <IndianRupee className="w-3 h-3" /> {cert.isMilestone ? 'Payout Amount' : 'Awarded Bid'}
                         </p>
                         <p className="text-green-400 font-bold text-sm">{formatINR(cert.bidAmount)}</p>
                     </div>
@@ -111,7 +173,7 @@ function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
                 {/* Winner wallet */}
                 <div className="bg-black/40 rounded-xl p-3 border border-white/10">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Verified Contractor Wallet</p>
-                    <p className="text-yellow-400 font-mono text-xs break-all">{cert.winner}</p>
+                    <p className={`font-mono text-xs break-all ${cert.isMilestone ? 'text-blue-400' : 'text-yellow-400'}`}>{cert.winner}</p>
                 </div>
 
                 {/* Etherscan-style link placeholder */}
@@ -121,6 +183,61 @@ function CertificateCard({ cert, index }: { cert: CertData; index: number }) {
                 >
                     <ExternalLink className="w-3 h-3" /> View on Explorer
                 </a>
+                
+                {/* Milestones Section - ONLY show on the MAIN certificate, not the milestone receipts! */}
+                {!cert.isMilestone && milestones.length > 0 && (
+                    <div className="mt-4 border-t border-white/10 pt-4">
+                        <h3 className="text-white font-bold mb-3 text-sm">Milestone Tracking</h3>
+                        <div className="space-y-3">
+                            {milestones.map((m) => {
+                                // Determine if this is the active pending milestone
+                                // It is active if: it is not approved AND (it is the first milestone OR the previous milestone is approved)
+                                const isPreviousApproved = m.index === 0 || milestones[m.index - 1].isApproved;
+                                const isNextPending = !m.isApproved && isPreviousApproved;
+                                const isLocked = !m.isApproved && !isPreviousApproved;
+                                const cumulativePercentage = milestones.slice(0, m.index + 1).reduce((sum, ms) => sum + ms.percentage, 0);
+
+                                if (isLocked) {
+                                    return (
+                                        <div key={m.index} className="bg-black/10 p-3 rounded-lg border border-white/5 opacity-50 grayscale flex justify-between items-center text-xs">
+                                            <span className="text-slate-400">Milestone {m.index + 1} ({cumulativePercentage}%)</span>
+                                            <span className="text-slate-500">🔒 Locked</span>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                <div key={m.index} className="bg-black/30 p-3 rounded-lg border border-white/5 flex flex-col gap-2">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-300 font-semibold">Milestone {m.index + 1} ({cumulativePercentage}%)</span>
+                                        <span className={`px-2 py-0.5 rounded-full ${m.isApproved ? 'bg-green-500/20 text-green-400' : m.isProofSubmitted ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                            {m.isApproved ? 'Approved & Paid' : m.isProofSubmitted ? 'Under Review' : 'Pending Proof'}
+                                        </span>
+                                    </div>
+                                    {!m.isProofSubmitted && isNextPending && (
+                                        <div className="flex gap-2 mt-2">
+                                            <input 
+                                                type="text" 
+                                                placeholder="Proof URL (e.g. image link)"
+                                                value={proofURI}
+                                                onChange={(e) => setProofURI(e.target.value)}
+                                                className="flex-1 bg-black/50 border border-white/10 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                                            />
+                                            <button 
+                                                onClick={() => handleSubmitProof(m.index)}
+                                                disabled={submitting}
+                                                className="bg-blue-500 text-white px-3 py-1 rounded-md text-xs font-bold hover:bg-blue-400 disabled:opacity-50"
+                                            >
+                                                {submitting ? '...' : 'Submit'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </div>
         </motion.div>
     );
@@ -138,24 +255,29 @@ export default function ContractorProfile() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch all ContractAwarded events for this wallet, then load cert metadata
+    // Fetch all NFTs for this wallet (balanceOf + getCertificateInfo)
+    // We do not rely on ContractAwarded event because Milestone NFTs are minted without that event.
+    // Instead we query the balance and then fetch each token ID belonging to the user.
+    // Wait, ERC721 doesn't have tokenOfOwnerByIndex natively unless it implements ERC721Enumerable.
+    // TenderSystem is just ERC721. To find the user's NFTs, we either need Enumerable, or we rely on Transfer events!
+    // Every mint emits a Transfer(address(0), to, tokenId) event!
     const loadCertificates = useCallback(async () => {
         if (!address || !publicClient) return;
         setLoading(true);
         setError(null);
         try {
-            // 1. Get all ContractAwarded events from block 0
+            // Get all Transfer events to this address
             const rawLogs = await publicClient.getLogs({
                 address: CONTRACT_ADDRESS,
-                event: parseAbi(["event ContractAwarded(uint256 indexed tenderId, address indexed winningBidder, uint256 certificateTokenId, uint96 bidAmount)"])[0],
+                event: parseAbi(["event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"])[0],
+                args: { to: address },
                 fromBlock: BigInt(0),
                 toBlock: 'latest',
             });
-            console.log("Raw logs found:", rawLogs);
+            console.log("Transfer logs found:", rawLogs);
 
-            // Manual filter bypassing strict RPC topic maps
             const logs = rawLogs.filter((log: any) => 
-                log.args.winningBidder?.toLowerCase() === address.toLowerCase()
+                log.args.to?.toLowerCase() === address.toLowerCase()
             );
 
             if (logs.length === 0) {
@@ -163,16 +285,16 @@ export default function ContractorProfile() {
                 return;
             }
 
-            // 2. For each event, read on-chain certificate metadata
+            // 2. For each token, read on-chain certificate metadata
             const certDataArr = await Promise.all(
                 logs.map(async (log: any) => {
-                    const tokenId = log.args.certificateTokenId as bigint;
+                    const tokenId = log.args.tokenId as bigint;
                     const info = await publicClient.readContract({
                         address: CONTRACT_ADDRESS,
                         abi: ABI,
                         functionName: 'getCertificateInfo',
                         args: [tokenId],
-                    }) as readonly [bigint, bigint, bigint, string];
+                    }) as readonly [bigint, bigint, bigint, string, boolean, number];
 
                     return {
                         tokenId,
@@ -180,9 +302,18 @@ export default function ContractorProfile() {
                         bidAmount: info[1],
                         awardedAt: info[2],
                         winner:    info[3],
+                        isMilestone: info[4],
+                        milestoneIndex: info[5],
                     } satisfies CertData;
                 })
             );
+
+            // Sort so that Main Awards are first, then milestones sequentially
+            certDataArr.sort((a, b) => {
+                if (a.tenderId !== b.tenderId) return Number(b.tenderId - a.tenderId);
+                if (a.isMilestone !== b.isMilestone) return a.isMilestone ? 1 : -1;
+                return a.milestoneIndex - b.milestoneIndex;
+            });
 
             setCerts(certDataArr);
         } catch (e: any) {
@@ -250,9 +381,10 @@ export default function ContractorProfile() {
                             {certs.length} Certificate{certs.length > 1 ? 's' : ''} Earned
                         </span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* items-start prevents cards from stretching vertically to match the tallest card in the row */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                         {certs.map((cert, i) => (
-                            <CertificateCard key={cert.tokenId.toString()} cert={cert} index={i} />
+                            <CertificateCard key={cert.tokenId.toString()} cert={cert} index={i} publicClient={publicClient} address={address} />
                         ))}
                     </div>
                 </>

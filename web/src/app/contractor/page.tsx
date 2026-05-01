@@ -64,35 +64,8 @@ export default function ContractorDashboard() {
             // Ensure state code is exactly 32 bytes for the smart contract
             const stateCodeBytes32 = pad(stringToHex(finalData.State.substring(0, 2).toUpperCase() || "MH"), { size: 32 });
 
-            // Step 1: Submit bid data to backend for ML evaluation first (10s timeout)
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-            let backendRes: Response;
-            try {
-                backendRes = await fetch(`http://localhost:8000/api/tenders/${selectedTender.id}/bids`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(finalData),
-                    signal: controller.signal,
-                });
-                clearTimeout(timeoutId);
-            } catch (fetchErr: any) {
-                clearTimeout(timeoutId);
-                if (fetchErr.name === 'AbortError') {
-                    throw new Error("⏱️ Backend timed out (10s). Is 'uvicorn api:app --reload' running in a terminal?");
-                }
-                throw new Error("🔌 Cannot reach backend at localhost:8000. Start the Python API server first.");
-            }
-
-            if (!backendRes.ok) {
-                const errData = await backendRes.json();
-                throw new Error(errData.detail || "Backend rejected the bid.");
-            }
-
-            // Step 2: Submit bid to blockchain via MetaMask
-            toast.info("Bid saved to backend", { description: "MetaMask will now open to record it on the blockchain. Please check your browser extension." });
-
-            // fd = safe any-cast for dynamic form fields (all filled at runtime by BidForm)
+            // Step 1: Prompt MetaMask for blockchain transaction FIRST 
+            // This prevents the browser from blocking the MetaMask popup due to async delays.
             const fd = finalData as Record<string, any>;
             const txHash = await writeContractAsync({
                 address: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
@@ -121,7 +94,34 @@ export default function ContractorDashboard() {
             });
 
             console.log("✅ Blockchain Txn Hash:", txHash);
-            setSuccessMsg("Bid submitted to AI evaluation and recorded on the Blockchain!");
+            toast.success("Blockchain Transaction Approved!", { description: "Saving bid data to backend..." });
+
+            // Step 2: Submit bid data to backend for ML evaluation
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            let backendRes: Response;
+            try {
+                backendRes = await fetch(`http://localhost:8000/api/tenders/${selectedTender.id}/bids`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(finalData),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+            } catch (fetchErr: any) {
+                clearTimeout(timeoutId);
+                if (fetchErr.name === 'AbortError') {
+                    throw new Error("⏱️ Backend timed out (10s). Is 'uvicorn api:app --reload' running in a terminal?");
+                }
+                throw new Error("🔌 Cannot reach backend at localhost:8000. Start the Python API server first.");
+            }
+
+            if (!backendRes.ok) {
+                const errData = await backendRes.json();
+                throw new Error(errData.detail || "Backend rejected the bid.");
+            }
+
+            setSuccessMsg("Bid successfully recorded on the Blockchain and saved for AI evaluation!");
             setTimeout(() => {
                 setSelectedTender(null);
                 setSuccessMsg(null);

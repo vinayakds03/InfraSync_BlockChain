@@ -35,12 +35,25 @@ contract TenderSystem is ERC721 {
         uint96  bidAmount;
         uint64  awardedAt;   // unix timestamp
         address winner;
+        bool    isMilestone; // true if this is a milestone receipt, false if main award
+        uint8   milestoneIndex;
     }
 
     // State variables
     mapping(uint256 => BidRecord[]) public tenderBids;   // tenderId => bids
     mapping(uint256 => bool)        public tenderResolved;
     mapping(uint256 => CertificateInfo) public certificates; // tokenId => cert info
+
+    // ── Milestone Tracking ─────────────────────────────────────────────
+    struct Milestone {
+        uint8 percentage;
+        bool isProofSubmitted;
+        bool isApproved;
+        string proofURI;
+    }
+    mapping(uint256 => Milestone[]) public tenderMilestones;
+    mapping(uint256 => address) public tenderWinners;
+    mapping(uint256 => uint96) public tenderTotalAmounts;
 
     address public oracleWallet;
     address public govOfficialWallet;
@@ -70,6 +83,9 @@ contract TenderSystem is ERC721 {
 
     event BidValidated(uint256 indexed tenderId, uint256 bidIndex, address indexed bidderAddress, bool isValid);
     event ContractAwarded(uint256 indexed tenderId, address indexed winningBidder, uint256 certificateTokenId, uint96 bidAmount);
+    
+    event MilestoneProofSubmitted(uint256 indexed tenderId, uint256 milestoneIndex, string proofURI);
+    event MilestoneApproved(uint256 indexed tenderId, uint256 milestoneIndex);
 
     // ── Modifiers ────────────────────────────────────────────────────────
     modifier onlyOracle() {
@@ -158,6 +174,15 @@ contract TenderSystem is ERC721 {
         return certificates[tokenId];
     }
 
+    function getMilestonesCount(uint256 tenderId) external view returns (uint256) {
+        return tenderMilestones[tenderId].length;
+    }
+
+    function getMilestoneDetails(uint256 tenderId, uint256 milestoneIndex) external view returns (Milestone memory) {
+        require(milestoneIndex < tenderMilestones[tenderId].length, "Index out of bounds");
+        return tenderMilestones[tenderId][milestoneIndex];
+    }
+
     // ── Oracle: mark a bid as ML-valid ───────────────────────────────────
     function updateValidity(uint256 tenderId, uint256 bidIndex, bool isValid) external onlyOracle {
         require(bidIndex < tenderBids[tenderId].length, "Index out of bounds");
@@ -185,10 +210,67 @@ contract TenderSystem is ERC721 {
             tenderId:   tenderId,
             bidAmount:  winningBid.bidAmount,
             awardedAt:  uint64(block.timestamp),
-            winner:     winningBid.bidderAddress
+            winner:     winningBid.bidderAddress,
+            isMilestone: false,
+            milestoneIndex: 0
         });
 
+        // Initialize Milestones (30%, 30%, 40%)
+        tenderWinners[tenderId] = winningBid.bidderAddress;
+        tenderTotalAmounts[tenderId] = winningBid.bidAmount;
+        tenderMilestones[tenderId].push(Milestone(30, false, false, ""));
+        tenderMilestones[tenderId].push(Milestone(30, false, false, ""));
+        tenderMilestones[tenderId].push(Milestone(40, false, false, ""));
+
         emit ContractAwarded(tenderId, winningBid.bidderAddress, tokenId, winningBid.bidAmount);
+    }
+
+    // ── Milestone Actions ────────────────────────────────────────────────
+    
+    function submitMilestoneProof(uint256 tenderId, uint256 milestoneIndex, string memory proofURI) external {
+        require(tenderResolved[tenderId], "Tender not awarded");
+        require(msg.sender == tenderWinners[tenderId], "Only winner can submit proof");
+        require(milestoneIndex < tenderMilestones[tenderId].length, "Invalid milestone index");
+        require(!tenderMilestones[tenderId][milestoneIndex].isApproved, "Already approved");
+        
+        // Enforce sequential submission
+        if (milestoneIndex > 0) {
+            require(tenderMilestones[tenderId][milestoneIndex - 1].isApproved, "Previous milestone not approved");
+        }
+
+        tenderMilestones[tenderId][milestoneIndex].proofURI = proofURI;
+        tenderMilestones[tenderId][milestoneIndex].isProofSubmitted = true;
+
+        emit MilestoneProofSubmitted(tenderId, milestoneIndex, proofURI);
+    }
+
+    function approveMilestone(uint256 tenderId, uint256 milestoneIndex) external onlyGovOfficial {
+        require(tenderResolved[tenderId], "Tender not awarded");
+        require(milestoneIndex < tenderMilestones[tenderId].length, "Invalid milestone index");
+        require(tenderMilestones[tenderId][milestoneIndex].isProofSubmitted, "Proof not submitted");
+        require(!tenderMilestones[tenderId][milestoneIndex].isApproved, "Already approved");
+
+        tenderMilestones[tenderId][milestoneIndex].isApproved = true;
+
+        // Mint milestone NFT receipt
+        uint256 tokenId = _nextTokenId++;
+        _safeMint(tenderWinners[tenderId], tokenId);
+
+        // Calculate payout amount based on percentage
+        uint96 totalBid = tenderTotalAmounts[tenderId];
+        uint8 percentage = tenderMilestones[tenderId][milestoneIndex].percentage;
+        uint96 payoutAmount = (totalBid * percentage) / 100;
+
+        certificates[tokenId] = CertificateInfo({
+            tenderId:   tenderId,
+            bidAmount:  payoutAmount,
+            awardedAt:  uint64(block.timestamp),
+            winner:     tenderWinners[tenderId],
+            isMilestone: true,
+            milestoneIndex: uint8(milestoneIndex)
+        });
+
+        emit MilestoneApproved(tenderId, milestoneIndex);
     }
 
     // ── Soulbound: prevent transfers ─────────────────────────────────────
